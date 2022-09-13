@@ -21,7 +21,7 @@
     var draw;
     var features = new ol.Collection();
     var format = new ol.format.WKT();
-    var current_shape = "point";
+    var current_shape = "LineString";
 
     var fill = new ol.style.Fill({
       color: 'rgba(210, 122, 167,0.2)'
@@ -43,25 +43,6 @@
       })
     ];
 
-    function addInteraction(shape) {
-      draw = new ol.interaction.Draw({
-        features: features,
-        type: /** @type {ol.geom.GeometryType} */ shape
-      });
-      map.addInteraction(draw);
-    }
-
-    /**
-    * Let user change the geometry type.
-    * @param {Event} e Change event.
-    */
-    function createVector() {
-      vector = new ol.layer.Vector({
-        source: new ol.source.Vector({ features: features }),
-        style: styles
-      });
-    }
-
     function toEPSG4326(element, index, array) {
       element = element.getGeometry().transform('EPSG:3857', 'EPSG:4326');
     }
@@ -70,28 +51,18 @@
       element = element.getGeometry().transform('EPSG:4326', 'EPSG:3857');
     }
 
-    function selectGeom(shape) {
-      current_shape = shape;
-      map.removeInteraction(draw);
-      addInteraction(shape);
-    }
-
     function init() {
       // document.getElementById("missing_wkt").style.display = "block";
-      createVector();
+      vector = new ol.layer.Vector({
+        source: new ol.source.Vector({ features: features }),
+        style: styles
+      });
       raster = new ol.layer.Tile({
         source: new ol.source.OSM()
       });
 
-      features.on("add", function (e) {
-        restoreDefaultColors();
-        features.forEach(toEPSG4326);
-        document.getElementById('wktStringTextArea').value = format.writeFeatures(features.getArray(), { rightHanded: true });
-        features.forEach(toEPSG3857);
-      });
-
       map = new ol.Map({
-        layers: [raster, vector],
+        layers: [raster],
         target: 'map',
         view: new ol.View({
           center: [300000, 5900000],
@@ -102,7 +73,6 @@
         loadWKTfromURIFragment(window.location.hash);
       }
       plotWKT();
-      selectGeom('Point');
     }
 
     function restoreDefaultColors() {
@@ -112,7 +82,7 @@
 
     // Plot wkt string on map
     function plotWKT() {
-      var new_feature;
+      var new_features = [];
 
       wkt_string = document.getElementById("wktStringTextArea").value;
       if (wkt_string == "") {
@@ -121,28 +91,41 @@
         return;
       } else {
         try {
-          new_feature = format.readFeature(wkt_string);
+          for (string of wkt_string.split('\n')) {
+            new_features.push(format.readFeature(string));
+          }
         } catch (err) {
         }
       }
 
-      if (!new_feature) {
+      if (new_features.length == 0) {
         document.getElementById("wktStringTextArea").style.borderColor = "red";
         document.getElementById("wktStringTextArea").style.backgroundColor = "#F7E8F3";
         return;
       } else {
         map.removeLayer(vector);
         features.clear();
-        new_feature.getGeometry().transform('EPSG:4326', 'EPSG:3857');
-        features.push(new_feature);
+        for (new_feature of new_features) {
+          new_feature.getGeometry().transform('EPSG:4326', 'EPSG:3857');
+          new_feature.setStyle(
+            new ol.style.Style({
+              stroke : new ol.style.Stroke({
+                color: "#" + Math.floor(Math.random()*16777215).toString(16),
+                width: 4
+              })
+            })
+          );
+          features.push(new_feature);
+        }
       }
+
+      
       vector = new ol.layer.Vector({
         source: new ol.source.Vector({ features: features }),
         style: styles
       });
-
-      selectGeom(current_shape);
       map.addLayer(vector);
+      
       derived_feature = features.getArray()[0];
       extent = derived_feature.getGeometry().getExtent();
       minx = derived_feature.getGeometry().getExtent()[0];
@@ -165,7 +148,6 @@
         source: new ol.source.Vector({ features: features }),
         style: styles
       });
-      selectGeom(current_shape);
       map.addLayer(vector);
       document.getElementById("wktStringTextArea").value = "";
       restoreDefaultColors();
@@ -215,19 +197,10 @@
   </nav>
   <div class="container-fluid" style="padding: 0px; border:0px">
     <div class="span12">
-      <div id="overlay" class="row align-items-center justify-content-center" style="background-color: transparent; z-index:1; position: absolute; top:280px; right:26px">
-        <div class="btn-group-vertical ">
-          <button type="button" class="btn btn-primary" onclick="selectGeom('Point')">Point</button>
-          <button type="button" class="btn btn-primary" onclick="selectGeom('LineString')">Line String</button>
-          <button type="button" class="btn btn-primary" onclick="selectGeom('Polygon')">Polygon</button>
-        </div>
-      </div>
       <div id="map" class="map" style="z-index: 0"></div>
     </div>
     <div class="span12" style="padding: 10px; border:0px">
-      <textarea id="wktStringTextArea" class="form-control" rows="4" onclick="restoreDefaultColors()">
-        
-      </textarea>
+      <textarea id="wktStringTextArea" class="form-control" rows="4" onclick="restoreDefaultColors()"></textarea>
       <div class="btn-group btn-group-md" style="padding: 10px; position: absolute; right:0px">
         <button type="button" class="btn btn-primary" onclick="clearMap()">Clear</button>
         <button type="button" class="btn btn-primary" onclick="plotWKT()">Plot Shape</button>
